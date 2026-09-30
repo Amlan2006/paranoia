@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Paranoia provider test</title>
+  <style>
+    body{font:16px/1.5 system-ui;background:#101013;color:#fff;max-width:560px;margin:8vh auto;padding:24px}
+    button,input{font:inherit;border-radius:10px;padding:10px 12px}button{background:#e73835;color:#fff;border:0;cursor:pointer;margin:8px 0}input{display:block;width:100%;box-sizing:border-box;background:#1c1c20;border:1px solid #555;color:#fff;margin:6px 0 14px}label{display:block}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#1c1c20;padding:16px;border-radius:12px}small{color:#aaa}
+  </style>
+</head>
+<body>
+  <h1>Paranoia provider test</h1>
+  <p>Open this page in Chrome with the unpacked Paranoia extension loaded. Use Celo Sepolia testnet only.</p>
+  <button id="connect">Connect Paranoia</button>
+  <p id="account">Not connected</p>
+  <label>Recipient<input id="recipient" placeholder="0x…" /></label>
+  <label>Amount in CELO<input id="amount" value="0.001" inputmode="decimal" /></label>
+  <button id="send">Request transfer</button>
+  <small>Every connection and transfer requires approval in the extension.</small>
+  <pre id="result">Ready.</pre>
+  <script>
+    let provider;
+    let account;
+    window.addEventListener("eip6963:announceProvider", (event) => {
+      if (event.detail.info.name === "Paranoia Wallet") provider = event.detail.provider;
+    });
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    document.getElementById("result").textContent = provider || window.paranoia
+      ? "Paranoia provider detected. Ready to connect."
+      : "Paranoia provider not detected. Reload this tab after loading the extension.";
+    document.getElementById("connect").onclick = async () => {
+      try {
+        provider ||= window.paranoia;
+        if (!provider) throw new Error("Paranoia extension not detected. Reload this tab after loading the extension.");
+        [account] = await provider.request({ method: "eth_requestAccounts" });
+        document.getElementById("account").textContent = account;
+        document.getElementById("result").textContent = "Connected to chain " + await provider.request({ method: "eth_chainId" });
+      } catch (error) { document.getElementById("result").textContent = error.message; }
+    };
+    document.getElementById("send").onclick = async () => {
+      try {
+        if (!account) throw new Error("Connect first.");
+        const value = document.getElementById("amount").value;
+        if (!/^\d+(?:\.\d{1,18})?$/.test(value)) throw new Error("Invalid CELO amount.");
+        const [whole, fraction = ""] = value.split(".");
+        const wei = BigInt(whole) * 10n ** 18n + BigInt(fraction.padEnd(18, "0"));
+        document.getElementById("result").textContent = "Waiting for wallet approval and on-chain receipt…";
+        const hash = await provider.request({ method: "eth_sendTransaction", params: [{ from: account, to: document.getElementById("recipient").value, value: "0x" + wei.toString(16) }] });
+        document.getElementById("result").textContent = "Confirmed transaction: " + hash;
+      } catch (error) { document.getElementById("result").textContent = error.message; }
+    };
+  </script>
+</body>
+</html>

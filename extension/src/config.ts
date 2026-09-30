@@ -1,0 +1,30 @@
+import { defineChain, parseAbi } from "viem";
+
+export const chain = defineChain({
+  id: 11_142_220,
+  name: "Celo Sepolia",
+  nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
+  rpcUrls: { default: { http: ["https://forno.celo-sepolia.celo-testnet.org"] } },
+  blockExplorers: { default: { name: "Celo Sepolia Explorer", url: "https://celo-sepolia.blockscout.com" } },
+});
+
+export const FACTORY = "0xBaF2ec363Ca23c65bB764ca68CE19081D4fe6008" as const;
+export const ENTRY_POINT = "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as const;
+export const BUNDLER = "https://public.pimlico.io/v2/11142220/rpc";
+
+export const factoryAbi = parseAbi([
+  "function createAccount(address owner,address entryPoint,uint256 maxNativeTransfer) returns (address)",
+  "event AccountCreated(address indexed owner,address indexed account,address indexed policyManager)",
+]);
+export const accountAbi = parseAbi([
+  "function owner() view returns (address)",
+  "function policyManager() view returns (address)",
+  "function execute(address target,uint256 value,bytes data)",
+  "function setMaxNativeTransfer(uint256 newLimit)",
+  "function whitelist7702Delegate(address delegate)",
+  "function removeWhitelisted7702Delegate(address delegate)",
+]);
+export const policyAbi = parseAbi([
+  "function maxNativeTransfer() view returns (uint256)",
+  "function trusted7702Delegates(address delegate) view returns (bool)",
+]);

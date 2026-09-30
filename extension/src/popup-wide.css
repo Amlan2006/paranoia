@@ -1,0 +1,23 @@
+/* Chrome sizes action popups from the document's intrinsic width. The old
+   100vw/max-width rules let the initial narrow viewport shrink the interface. */
+html,
+body {
+  width: 370px;
+  min-width: 370px;
+  max-width: none;
+}
+
+.shell {
+  width: 370px;
+  max-width: none;
+  margin: 0;
+}
+
+.brand,
+.network {
+  white-space: nowrap;
+}
+
+.network {
+  flex: none;
+}

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paranoia Wallet</title>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">◈</span><span>paranoia</span></div>
+        <span class="network"><i></i>Celo Sepolia</span>
+      </header>
+      <main id="app">
+        <section id="dapp-approval" class="screen approval-card" hidden>
+          <p class="eyebrow">Website request</p>
+          <h1 id="dapp-title">Connect website</h1>
+          <p class="muted">Requested by <strong id="dapp-origin"></strong></p>
+          <div id="dapp-transaction" hidden>
+            <div class="metric-row"><span>Network</span><strong>Celo Sepolia</strong></div>
+            <div class="metric-row"><span>From</span><strong id="dapp-from" class="address"></strong></div>
+            <div class="metric-row"><span>To</span><strong id="dapp-to" class="address"></strong></div>
+            <div class="metric-row"><span>CELO value</span><strong id="dapp-value"></strong></div>
+            <p id="dapp-call-warning" class="risk blocked" hidden>Contract call: verify the raw data and destination. Paranoia cannot identify every contract action.</p>
+            <details><summary>Raw transaction data</summary><code id="dapp-data" class="raw-data"></code></details>
+          </div>
+          <p id="dapp-connect-note" class="fineprint">This website will see your smart-account address. It cannot access your recovery phrase or sign without another approval.</p>
+          <p id="dapp-approval-status" class="muted"></p>
+          <button id="dapp-approve" class="button primary">Approve</button>
+          <button id="dapp-reject" class="button secondary">Reject</button>
+        </section>
+        <section id="welcome" class="screen" hidden>
+          <p class="eyebrow">Independent wallet</p>
+          <h1>Your wallet should be paranoid.</h1>
+          <p class="muted">Create a new owner wallet here, then deploy a protected smart account on Celo Sepolia.</p>
+          <button id="start-create" class="button primary">Create new wallet</button>
+          <button id="start-import" class="button secondary">Import recovery phrase</button>
+        </section>
+        <section id="setup" class="screen" hidden>
+          <button id="setup-back" class="text-button">← Back</button>
+          <p class="eyebrow">Wallet setup</p>
+          <h1 id="setup-title">Create wallet</h1>
+          <label id="phrase-wrap" hidden>Recovery phrase<textarea id="phrase" rows="3" autocomplete="off" spellcheck="false" placeholder="Enter your 12-word recovery phrase"></textarea></label>
+          <label>Password<input id="setup-password" type="password" autocomplete="new-password" placeholder="At least 12 characters" /></label>
+          <label>Confirm password<input id="setup-confirm" type="password" autocomplete="new-password" /></label>
+          <p class="fineprint">Encrypted locally with AES-256-GCM. Your password is needed each time the wallet unlocks.</p>
+          <button id="finish-setup" class="button primary">Continue</button>
+        </section>
+        <section id="backup" class="screen" hidden>
+          <p class="eyebrow">Recovery phrase</p>
+          <h1>Back up your wallet</h1>
+          <p class="muted">Write these words down in order. Anyone with them can control your wallet.</p>
+          <div id="recovery-phrase" class="phrase"></div>
+          <label class="checkrow"><input id="backup-confirm" type="checkbox" /> I saved my recovery phrase somewhere private.</label>
+          <button id="finish-backup" class="button primary" disabled>Open wallet</button>
+        </section>
+        <section id="unlock" class="screen" hidden>
+          <p class="eyebrow">Welcome back</p>
+          <h1>Unlock Paranoia</h1>
+          <p id="locked-owner" class="address muted"></p>
+          <label>Password<input id="unlock-password" type="password" autocomplete="current-password" /></label>
+          <button id="unlock-button" class="button primary">Unlock wallet</button>
+        </section>
+        <section id="wallet" class="screen" hidden>
+          <div class="heading-row"><div><p class="eyebrow">Protected smart account</p><h1>Wallet</h1></div><button id="lock-button" class="icon-button" title="Lock wallet">⌁</button></div>
+          <div id="deploy-card" class="card" hidden>
+            <p class="eyebrow">Setup required</p>
+            <h2>Deploy your smart account</h2>
+            <p class="muted">The owner address needs testnet CELO to pay deployment gas. Keep your protected funds in the smart account after deployment.</p>
+            <p class="label">Owner address for deployment gas</p><p id="owner-deploy-address" class="address"></p>
+            <button id="copy-owner" class="button secondary">Copy owner address</button>
+            <button id="deploy-button" class="button primary">Deploy smart account</button>
+            <details><summary>Already deployed?</summary><label>Smart-account address<input id="link-address" placeholder="0x…" /></label><button id="link-button" class="button secondary">Link existing account</button></details>
+          </div>
+          <div id="active-wallet" hidden>
+            <div class="balance-card"><p class="eyebrow">Smart-account balance</p><div class="balance"><span id="smart-balance">0</span><small>CELO</small></div><p id="smart-address" class="address"></p><button id="copy-smart" class="mini-button">Copy receive address</button></div>
+            <div class="metric-row"><span>Per-transfer limit</span><strong id="current-limit">—</strong></div>
+            <div class="metric-row"><span>Owner gas balance</span><strong id="owner-balance">—</strong></div>
+            <nav class="tabs"><button class="tab active" data-tab="send">Send</button><button class="tab" data-tab="security">Security</button><button class="tab" data-tab="receive">Receive</button></nav>
+            <section id="send-pane" class="pane">
+              <h2>Send CELO</h2>
+              <label>Recipient<input id="recipient" placeholder="0x…" /></label>
+              <label>Amount in CELO<input id="send-amount" inputmode="decimal" placeholder="0.00" /></label>
+              <p id="send-risk" class="risk neutral">Enter an amount to check the spending policy.</p>
+              <button id="review-send" class="button primary">Review transfer</button>
+              <div id="send-review" class="review" hidden><p id="send-summary"></p><button id="confirm-send" class="button primary">Sign and submit</button><button id="cancel-send" class="button secondary">Edit transfer</button></div>
+              <details class="extra"><summary>Approve ERC-20 token</summary>
+                <label>Token address<input id="token-address" placeholder="0x…" /></label>
+                <label>Spender address<input id="spender-address" placeholder="0x…" /></label>
+                <label>Token amount<input id="token-amount" inputmode="decimal" placeholder="0.00" /></label>
+                <p class="fineprint">Unlimited approvals are blocked by the contract.</p>
+                <button id="approve-button" class="button secondary">Review and submit approval</button>
+              </details>
+            </section>
+            <section id="security-pane" class="pane" hidden>
+              <h2>Security rules</h2>
+              <label>CELO limit per transfer<input id="new-limit" inputmode="decimal" placeholder="1.0" /></label>
+              <button id="update-limit" class="button secondary">Update on-chain limit</button>
+              <div class="divider"></div>
+              <h2>Recovery phrase</h2>
+              <p class="fineprint">If setup was interrupted, you can reveal your phrase with your password. Never share it.</p>
+              <label>Wallet password<input id="reveal-password" type="password" autocomplete="off" /></label>
+              <button id="reveal-phrase" class="button secondary">Reveal for 30 seconds</button>
+              <p id="revealed-phrase" class="phrase" hidden></p>
+              <div class="divider"></div>
+              <h2>Connected websites</h2>
+              <div id="connected-sites" class="connected-sites"><p class="fineprint">No websites connected.</p></div>
+              <div class="divider"></div>
+              <h2>EIP-7702 delegation</h2><p id="delegation-status" class="muted">Not scanned</p>
+              <button id="scan-7702" class="button secondary">Scan owner address</button>
+              <label>Delegate address<input id="delegate-address" placeholder="0x…" /></label>
+              <div class="button-row"><button id="add-delegate" class="button secondary">Allow</button><button id="remove-delegate" class="button secondary">Remove</button></div>
+            </section>
+            <section id="receive-pane" class="pane" hidden><h2>Receive CELO</h2><p class="muted">Send Celo Sepolia CELO to this protected smart account.</p><p id="receive-address" class="address large"></p><button id="copy-receive" class="button primary">Copy address</button></section>
+          </div>
+        </section>
+      </main>
+      <div id="toast" role="status" aria-live="polite" hidden></div>
+      <footer>Celo Sepolia testnet · Paranoia MVP</footer>
+    </div>
+    <script type="module" src="/src/popup.ts"></script>
+  </body>
+</html>

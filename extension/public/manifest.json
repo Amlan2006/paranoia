@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Paranoia Wallet",
+  "version": "0.1.0",
+  "minimum_chrome_version": "120",
+  "description": "Independent Celo Sepolia smart wallet with on-chain transaction policies.",
+  "action": {
+    "default_title": "Paranoia Wallet",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    { "matches": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"], "js": ["bridge.js"], "run_at": "document_start", "world": "ISOLATED" },
+    { "matches": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"], "js": ["provider.js"], "run_at": "document_start", "world": "MAIN" }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://forno.celo-sepolia.celo-testnet.org/*",
+    "https://public.pimlico.io/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
