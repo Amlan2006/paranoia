@@ -1,6 +1,7 @@
 import { formatEther, isAddress, parseEther, type Address } from "viem";
 import "./popup.css";
 import "./popup-wide.css";
+import "./popup-phantom.css";
 
 type Status = {
   exists: boolean;
@@ -73,8 +74,10 @@ async function refresh() {
       text("owner-deploy-address", current.owner ?? "");
       text("owner-balance", current.ownerBalance === null ? "Unavailable" : (current.ownerBalance ?? "—") + " CELO");
       if (current.smartAccount) {
-        text("smart-balance", current.smartBalance === null ? "—" : displayBalance(current.smartBalance ?? "0"));
-        text("smart-address", current.smartAccount);
+        const visibleBalance = current.smartBalance === null ? "—" : displayBalance(current.smartBalance ?? "0");
+        text("smart-balance", visibleBalance);
+        text("smart-balance-asset", visibleBalance + " CELO");
+        text("copy-smart", current.smartAccount.slice(0, 6) + "…" + current.smartAccount.slice(-4));
         text("receive-address", current.smartAccount);
         text("current-limit", current.limit === null ? "Unavailable" : (current.limit ?? "—") + " CELO");
         updateRisk();
@@ -172,7 +175,7 @@ async function copy(value: string, buttonId: string) {
 function tab(name: string) {
   if (name !== "security") clearRevealedPhrase();
   document.querySelectorAll<HTMLButtonElement>(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
-  for (const pane of ["send", "security", "receive"]) show(pane + "-pane", pane === name);
+  for (const pane of ["home", "send", "security", "receive"]) show(pane + "-pane", pane === name);
 }
 function clearRevealedPhrase() {
   clearTimeout(phraseTimer);
@@ -220,7 +223,7 @@ el("unlock-button").addEventListener("click", async () => {
   el<HTMLInputElement>("unlock-password").value = "";
   await action("UNLOCK", { password });
 });
-el("lock-button").addEventListener("click", async () => { clearRevealedPhrase(); await action("LOCK"); tab("send"); });
+el("lock-button").addEventListener("click", async () => { clearRevealedPhrase(); await action("LOCK"); tab("home"); });
 el("deploy-button").addEventListener("click", async () => {
   await action<{ smartAccount: Address }>("DEPLOY", {}, (result) => "Smart account deployed: " + result.smartAccount);
 });
@@ -231,6 +234,7 @@ el("copy-owner").addEventListener("click", () => { if (current.owner) void copy(
 el("copy-smart").addEventListener("click", () => { if (current.smartAccount) void copy(current.smartAccount, "copy-smart"); });
 el("copy-receive").addEventListener("click", () => { if (current.smartAccount) void copy(current.smartAccount, "copy-receive"); });
 document.querySelectorAll<HTMLButtonElement>(".tab").forEach((button) => button.addEventListener("click", () => tab(button.dataset.tab ?? "send")));
+document.querySelectorAll<HTMLButtonElement>(".quick-action").forEach((button) => button.addEventListener("click", () => tab(button.dataset.tab ?? "home")));
 for (const id of ["send-amount", "recipient"]) {
   el(id).addEventListener("input", () => {
     reviewedTransfer = null;

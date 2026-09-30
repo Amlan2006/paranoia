@@ -62,7 +62,7 @@
           <button id="unlock-button" class="button primary">Unlock wallet</button>
         </section>
         <section id="wallet" class="screen" hidden>
-          <div class="heading-row"><div><p class="eyebrow">Protected smart account</p><h1>Wallet</h1></div><button id="lock-button" class="icon-button" title="Lock wallet">⌁</button></div>
+          <div class="heading-row wallet-heading"><div><p class="eyebrow">Celo Sepolia</p><h1>My wallet</h1></div><button id="lock-button" class="icon-button" title="Lock wallet" aria-label="Lock wallet">⌁</button></div>
           <div id="deploy-card" class="card" hidden>
             <p class="eyebrow">Setup required</p>
             <h2>Deploy your smart account</h2>
@@ -73,11 +73,24 @@
             <details><summary>Already deployed?</summary><label>Smart-account address<input id="link-address" placeholder="0x…" /></label><button id="link-button" class="button secondary">Link existing account</button></details>
           </div>
           <div id="active-wallet" hidden>
-            <div class="balance-card"><p class="eyebrow">Smart-account balance</p><div class="balance"><span id="smart-balance">0</span><small>CELO</small></div><p id="smart-address" class="address"></p><button id="copy-smart" class="mini-button">Copy receive address</button></div>
-            <div class="metric-row"><span>Per-transfer limit</span><strong id="current-limit">—</strong></div>
-            <div class="metric-row"><span>Owner gas balance</span><strong id="owner-balance">—</strong></div>
-            <nav class="tabs"><button class="tab active" data-tab="send">Send</button><button class="tab" data-tab="security">Security</button><button class="tab" data-tab="receive">Receive</button></nav>
-            <section id="send-pane" class="pane">
+            <section id="home-pane" class="pane">
+              <div class="balance-card">
+                <p class="balance-caption">Total balance</p>
+                <div class="balance"><span id="smart-balance">0</span><small>CELO</small></div>
+                <button id="copy-smart" class="mini-button">Copy address</button>
+              </div>
+              <div class="quick-actions" aria-label="Wallet actions">
+                <button class="quick-action" data-tab="receive"><span class="quick-icon" aria-hidden="true">↓</span><span>Receive</span></button>
+                <button class="quick-action" data-tab="send"><span class="quick-icon" aria-hidden="true">↑</span><span>Send</span></button>
+                <button class="quick-action" data-tab="security"><span class="quick-icon" aria-hidden="true">◇</span><span>Security</span></button>
+              </div>
+              <h2 class="section-title">Assets</h2>
+              <div class="asset-row"><span class="asset-icon" aria-hidden="true">C</span><span class="asset-name">Celo<small>Celo Sepolia</small></span><strong id="smart-balance-asset">0 CELO</strong></div>
+              <div class="protection-row"><span class="protection-icon" aria-hidden="true">✓</span><span>Protected by Paranoia<small>Per-transfer limit: <strong id="current-limit">—</strong></small></span></div>
+              <div class="metric-row owner-gas"><span>Owner gas balance</span><strong id="owner-balance">—</strong></div>
+            </section>
+            <nav class="tabs" aria-label="Wallet navigation"><button class="tab active" data-tab="home">Home</button><button class="tab" data-tab="send">Send</button><button class="tab" data-tab="receive">Receive</button><button class="tab" data-tab="security">Security</button></nav>
+            <section id="send-pane" class="pane" hidden>
               <h2>Send CELO</h2>
               <label>Recipient<input id="recipient" placeholder="0x…" /></label>
               <label>Amount in CELO<input id="send-amount" inputmode="decimal" placeholder="0.00" /></label>
