@@ -6,15 +6,15 @@ import {ParanoiaAccount} from "../src/ParanoiaAccount.sol";
 import {ParanoiaAccountFactory} from "../src/ParanoiaAccountFactory.sol";
 
 /// @notice Deploys the Paranoia factory and a first owner-controlled account.
-/// @dev Required environment variables: PRIVATE_KEY, OWNER, ENTRY_POINT, MAX_NATIVE_TRANSFER.
+/// @dev Required environment variables: OWNER, ENTRY_POINT, MAX_NATIVE_TRANSFER.
+/// The broadcaster is supplied by Forge, for example with --private-key.
 contract Deploy is Script {
     function run() external returns (ParanoiaAccountFactory factory, ParanoiaAccount account) {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address owner = vm.envAddress("OWNER");
         address entryPoint = vm.envAddress("ENTRY_POINT");
         uint256 maxNativeTransfer = vm.envUint("MAX_NATIVE_TRANSFER");
 
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast();
         factory = new ParanoiaAccountFactory();
         account = factory.createAccount(owner, entryPoint, maxNativeTransfer);
         vm.stopBroadcast();
