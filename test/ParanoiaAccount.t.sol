@@ -7,9 +7,14 @@ import {PolicyManager} from "../src/PolicyManager.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MaliciousSpender} from "../src/mocks/MaliciousSpender.sol";
 import {TrustedTarget} from "../src/mocks/TrustedTarget.sol";
+import {PackedUserOperation} from "@openzeppelin/contracts/interfaces/IERC4337.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract ParanoiaAccountTest is Test {
-    address internal owner = makeAddr("owner");
+    using MessageHashUtils for bytes32;
+
+    uint256 internal ownerPrivateKey = 0xA11CE;
+    address internal owner;
     address internal stranger = makeAddr("stranger");
     address internal entryPoint = makeAddr("entryPoint");
     address internal recipient = makeAddr("recipient");
@@ -21,6 +26,7 @@ contract ParanoiaAccountTest is Test {
     TrustedTarget internal target;
 
     function setUp() public {
+        owner = vm.addr(ownerPrivateKey);
         account = new ParanoiaAccount(owner, entryPoint, 1 ether);
         policyManager = PolicyManager(address(account.policyManager()));
         token = new MockERC20();
@@ -28,6 +34,55 @@ contract ParanoiaAccountTest is Test {
         target = new TrustedTarget();
         vm.deal(address(account), 10 ether);
         token.mint(address(account), 100e18);
+    }
+
+    function _userOp(bytes memory signature) internal view returns (PackedUserOperation memory) {
+        return PackedUserOperation({
+            sender: address(account),
+            nonce: 0,
+            initCode: "",
+            callData: "",
+            accountGasLimits: bytes32(0),
+            preVerificationGas: 0,
+            gasFees: bytes32(0),
+            paymasterAndData: "",
+            signature: signature
+        });
+    }
+
+    function testValidUserOperationSignatureIsAccepted() public {
+        bytes32 userOpHash = keccak256("valid user operation");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, userOpHash.toEthSignedMessageHash());
+        PackedUserOperation memory userOp = _userOp(abi.encodePacked(r, s, v));
+
+        vm.prank(entryPoint);
+        assertEq(account.validateUserOp(userOp, userOpHash, 0), 0);
+    }
+
+    function testInvalidUserOperationSignatureIsRejected() public {
+        PackedUserOperation memory userOp = _userOp(hex"1234");
+
+        vm.prank(entryPoint);
+        assertEq(account.validateUserOp(userOp, keccak256("invalid user operation"), 0), 1);
+    }
+
+    function testUserOperationPaysMissingPrefundToEntryPoint() public {
+        bytes32 userOpHash = keccak256("prefund user operation");
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPrivateKey, userOpHash.toEthSignedMessageHash());
+        PackedUserOperation memory userOp = _userOp(abi.encodePacked(r, s, v));
+
+        vm.deal(entryPoint, 0);
+        vm.prank(entryPoint);
+        account.validateUserOp(userOp, userOpHash, 0.25 ether);
+        assertEq(entryPoint.balance, 0.25 ether);
+    }
+
+    function testOnlyEntryPointCanValidateUserOperation() public {
+        PackedUserOperation memory userOp = _userOp("");
+
+        vm.expectRevert();
+        vm.prank(stranger);
+        account.validateUserOp(userOp, keccak256("user operation"), 0);
     }
 
     function testOwnerCanExecuteSafeTransfer() public {
@@ -77,6 +132,13 @@ contract ParanoiaAccountTest is Test {
         account.execute(address(token), 0, approval);
     }
 
+    function testMalformedApprovalCalldataReverts() public {
+        bytes memory malformedApproval = abi.encodePacked(token.approve.selector, address(maliciousSpender));
+        vm.expectRevert(PolicyManager.MalformedApprovalCalldata.selector);
+        vm.prank(owner);
+        account.execute(address(token), 0, malformedApproval);
+    }
+
     function testTrustedTargetCanBeAddedAndRemoved() public {
         vm.startPrank(owner);
         account.setTrustedTarget(address(target), true);
@@ -90,6 +152,13 @@ contract ParanoiaAccountTest is Test {
         vm.expectRevert(ParanoiaAccount.Unauthorized.selector);
         vm.prank(stranger);
         account.setMaxNativeTransfer(2 ether);
+    }
+
+    function testEntryPointCanUpdatePolicyThroughAccount() public {
+        bytes memory updateLimit = abi.encodeCall(account.setMaxNativeTransfer, (2 ether));
+        vm.prank(entryPoint);
+        account.execute(address(account), 0, updateLimit);
+        assertEq(policyManager.maxNativeTransfer(), 2 ether);
     }
 
     function testOwnerCanWhitelistAndRemove7702Delegate() public {

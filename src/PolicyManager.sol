@@ -10,6 +10,7 @@ contract PolicyManager {
     error Unauthorized();
     error InvalidTarget();
     error SpendingLimitExceeded(uint256 requested, uint256 maximum);
+    error MalformedApprovalCalldata();
     error UnlimitedApprovalBlocked(address spender);
     error BlockedTarget(address target);
     error Untrusted7702Delegate(address delegate);
@@ -72,8 +73,9 @@ contract PolicyManager {
         if (blockedTargets[target]) revert BlockedTarget(target);
         if (value > maxNativeTransfer) revert SpendingLimitExceeded(value, maxNativeTransfer);
 
-        // approve(address,uint256) is 4 selector bytes plus two ABI words.
-        if (data.length >= 68 && bytes4(data[:4]) == IERC20.approve.selector) {
+        if (data.length >= 4 && bytes4(data[:4]) == IERC20.approve.selector) {
+            // approve(address,uint256) is 4 selector bytes plus two ABI words.
+            if (data.length < 68) revert MalformedApprovalCalldata();
             (address spender, uint256 amount) = abi.decode(data[4:], (address, uint256));
             if (amount == type(uint256).max) revert UnlimitedApprovalBlocked(spender);
         }
