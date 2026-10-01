@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paranoia · EIP-7702 attack simulation</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #17171b; color: #fafafa; font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 850px; margin: 40px auto; padding: 24px; }
+    h1 { line-height: 1.15; font-size: clamp(27px, 5vw, 40px); }
+    p, small { color: #bbb9c3; }
+    .card { background: #232328; border: 1px solid #ffffff20; border-radius: 18px; padding: 22px; margin: 22px 0; }
+    label { display: block; margin-bottom: 8px; }
+    input { width: 100%; background: #17171b; color: white; border: 1px solid #ffffff35; border-radius: 10px; padding: 12px; font: 14px ui-monospace, monospace; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    button { border: 0; border-radius: 10px; padding: 12px 16px; background: #38383f; color: white; font: inherit; cursor: pointer; }
+    #run { background: #e8454d; }
+    button:disabled { opacity: .5; cursor: wait; }
+    :focus-visible { outline: 2px solid #ff9ba0; outline-offset: 3px; }
+    pre { font: 13px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #verdict { font-weight: 700; }
+    [data-result="blocked"] { color: #81e4ae; }
+    [data-result="vulnerable"] { color: #ff8b91; }
+    [data-result="inconclusive"] { color: #f1cc7b; }
+  </style>
+</head>
+<body>
+<main>
+  <small>PARANOIA / CELO SEPOLIA</small>
+  <h1>Simulate a delegation attack</h1>
+  <p>Temporarily give the owner's address malicious EIP-7702 code in an RPC simulation. Test whether it can raise the spending limit, drain a simulated 10 CELO balance, or execute a call directly.</p>
+  <p>No private key, delegation signature, transaction or gas payment is needed. The simulation never broadcasts. It checks the selected smart account's contract guard, not every possible wallet attack.</p>
+  <div class="card">
+    <label for="account">Smart-account address</label>
+    <input id="account" value="0x214a78a58D316d2D286E8d7e150a8a4DB677Ec3a" spellcheck="false" autocomplete="off">
+    <div class="buttons">
+      <button id="run">Run attack simulation</button>
+      <button id="connect">Use my Paranoia account</button>
+      <button id="new">Use new protected account</button>
+      <button id="old">Use old account for comparison</button>
+    </div>
+    <p id="connection" role="status">The new deployment is selected. Optionally connect Paranoia to test your linked account instead.</p>
+  </div>
+  <div class="card">
+    <div id="verdict" role="status">Ready to simulate</div>
+    <pre id="log" role="log" aria-live="polite"></pre>
+  </div>
+  <p>A green result confirms both tested attack paths returned <code>DirectOwnerCallWithCode(owner)</code>. A network error or unsupported state override produces an inconclusive result. The old account is expected to demonstrate the vulnerability.</p>
+  <p>Serve this folder on localhost. Open <code>http://127.0.0.1:8080/delegation-attack.html</code> in Chrome. The connected wallet must already be unlocked and have a linked smart account.</p>
+</main>
+<script type="module">
+  import { simulate } from './delegation-simulation.mjs';
+  const account = document.getElementById('account');
+  const verdict = document.getElementById('verdict');
+  const log = document.getElementById('log');
+  const connection = document.getElementById('connection');
+  const buttons = [...document.querySelectorAll('button')];
+  const busy = value => { buttons.forEach(button => button.disabled = value); account.disabled = value; };
+  const report = (label, value) => { log.textContent += label + '\n' + (typeof value === 'string' ? value : JSON.stringify(value, null, 2)) + '\n\n'; };
+  const reset = () => { log.textContent = ''; verdict.textContent = 'Ready to simulate'; delete verdict.dataset.result; };
+  account.oninput = reset;
+  document.getElementById('new').onclick = () => { account.value = '0x214a78a58D316d2D286E8d7e150a8a4DB677Ec3a'; reset(); };
+  document.getElementById('old').onclick = () => { account.value = '0x479aa953B3d730588734bacc0dfD9D2Cb7e1C2db'; reset(); };
+  document.getElementById('connect').onclick = async () => {
+    busy(true);
+    try {
+      if (!window.paranoia) throw new Error('Paranoia not detected. Reload the extension and refresh this localhost page.');
+      connection.textContent = 'Waiting for Paranoia connection approval…';
+      const accounts = await window.paranoia.request({ method: 'eth_requestAccounts' });
+      if (!accounts?.[0]) throw new Error('No smart account returned.');
+      account.value = accounts[0]; reset();
+      connection.textContent = 'Selected your connected smart account. Click Run attack simulation.';
+    } catch (error) { connection.textContent = error.message; }
+    finally { busy(false); }
+  };
+  document.getElementById('run').onclick = async () => {
+    busy(true); reset(); verdict.textContent = 'Running read-only simulations…';
+    try {
+      const response = await fetch('./delegation-fixture.json');
+      if (!response.ok) throw new Error('Could not load the simulation fixture. Serve the entire examples folder.');
+      const result = await simulate(account.value, await response.json(), report);
+      verdict.dataset.result = result.outcome;
+      verdict.textContent = result.outcome === 'blocked' ? 'BLOCKED — both tested delegation attacks were stopped.'
+        : result.outcome === 'vulnerable' ? 'VULNERABLE — at least one simulated attack succeeded.'
+        : 'INCONCLUSIVE — the expected guard could not be confirmed.';
+    } catch (error) {
+      verdict.dataset.result = 'inconclusive';
+      verdict.textContent = 'INCONCLUSIVE — no safety conclusion can be drawn.';
+      report('Error', error.message + ' The RPC must support eth_call state overrides and EIP-7702 execution.');
+    } finally { busy(false); }
+  };
+</script>
+</body>
+</html>

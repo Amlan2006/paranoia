@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Check window.paranoia</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #17171b; color: #f7f7f8; font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 760px; margin: 6vh auto; padding: 24px; }
+    h1 { line-height: 1.2; }
+    p { color: #b7b5bf; }
+    .card { padding: 22px; border: 1px solid #ffffff20; border-radius: 18px; background: #222227; margin: 20px 0; }
+    #status { color: #f7f7f8; margin-top: 0; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    button { font: inherit; border: 1px solid #ffffff20; border-radius: 10px; padding: 10px 16px; background: #333339; color: white; cursor: pointer; }
+    #connect { background: #e8454d; }
+    button:disabled { opacity: .5; cursor: wait; }
+    button:focus-visible { outline: 2px solid #ff858b; outline-offset: 3px; }
+    pre, code { font-family: ui-monospace, monospace; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+    #origin { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Check <code>window.paranoia</code></h1>
+    <p>Test your Paranoia extension on Celo Sepolia. Connecting requests access to your smart-account address. This page does not request transactions or signatures.</p>
+    <p>Website origin: <code id="origin"></code></p>
+    <div class="card">
+      <p id="status" role="status">Checking for Paranoia…</p>
+      <div class="actions">
+        <button id="detect">Detect provider</button>
+        <button id="chain">Check network</button>
+        <button id="connect">Connect wallet</button>
+        <button id="accounts">Read accounts</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Results</h2>
+      <pre id="results" role="log" aria-live="polite">Ready.</pre>
+      <button id="clear">Clear results</button>
+    </div>
+    <p>If the provider is missing, enable Paranoia's site access, reload the extension, then refresh this page. Serve this file on localhost; opening it directly as a file won't inject the provider.</p>
+  </main>
+  <script>
+    const status = document.getElementById('status');
+    const results = document.getElementById('results');
+    const requestButtons = ['chain', 'connect', 'accounts'].map(id => document.getElementById(id));
+    let listeningProvider;
+    let pending = false;
+    let discovered = false;
+    document.getElementById('origin').textContent = location.origin;
+
+    function log(label, value) {
+      const entry = `${new Date().toLocaleTimeString()} — ${label}\n${JSON.stringify(value, null, 2)}`;
+      results.textContent = (entry + '\n\n' + (results.textContent === 'Ready.' ? '' : results.textContent)).slice(0, 18000);
+    }
+
+    function detect() {
+      const provider = window.paranoia;
+      const available = !!provider && typeof provider.request === 'function';
+      status.textContent = location.protocol === 'file:'
+        ? 'Open this page through http://127.0.0.1:8080/provider-check.html.'
+        : available
+          ? `window.paranoia detected.${discovered ? ' EIP-6963 discovery also works.' : ''}`
+          : 'window.paranoia not found. Enable the extension and refresh this page.';
+      requestButtons.forEach(button => { button.disabled = !available || pending; });
+      if (available && provider !== listeningProvider && typeof provider.on === 'function') {
+        listeningProvider = provider;
+        for (const event of ['accountsChanged', 'chainChanged', 'disconnect']) {
+          provider.on(event, value => log(event, value));
+        }
+      }
+      return available ? provider : null;
+    }
+
+    window.addEventListener('eip6963:announceProvider', event => {
+      if (event.detail?.info?.rdns === 'app.paranoia.wallet') {
+        discovered = true;
+        detect();
+      }
+    });
+
+    async function request(method) {
+      const provider = detect();
+      if (!provider || pending) return;
+      pending = true;
+      detect();
+      log(method, method === 'eth_requestAccounts' ? 'Approve or reject the connection in the Paranoia window.' : 'Waiting for response…');
+      try {
+        const value = await provider.request({ method });
+        log(method, value);
+        if (method === 'eth_chainId') {
+          log('Network check', BigInt(value) === 11142220n ? 'Celo Sepolia ✓ (11142220)' : 'Unexpected chain: ' + value);
+        }
+        if (Array.isArray(value) && value.length === 0) log('Accounts', 'No account exposed. Connect and approve with an unlocked, deployed smart account.');
+      } catch (error) {
+        log(method + ' failed', { message: error.message || String(error), code: error.code ?? null });
+      } finally {
+        pending = false;
+        detect();
+      }
+    }
+
+    document.getElementById('detect').onclick = () => {
+      window.dispatchEvent(new Event('eip6963:requestProvider'));
+      const provider = detect();
+      log('Provider detection', { windowParanoia: !!provider, isParanoia: provider?.isParanoia === true, eip6963: discovered });
+    };
+    document.getElementById('chain').onclick = () => request('eth_chainId');
+    document.getElementById('connect').onclick = () => request('eth_requestAccounts');
+    document.getElementById('accounts').onclick = () => request('eth_accounts');
+    document.getElementById('clear').onclick = () => { results.textContent = 'Ready.'; };
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+    detect();
+  </script>
+</body>
+</html>

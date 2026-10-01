@@ -8,7 +8,7 @@ export const chain = defineChain({
   blockExplorers: { default: { name: "Celo Sepolia Explorer", url: "https://celo-sepolia.blockscout.com" } },
 });
 
-export const FACTORY = "0xBaF2ec363Ca23c65bB764ca68CE19081D4fe6008" as const;
+export const FACTORY = "0xcD0c78baa1d16F22a7FCfd0A043651F3DDd9f4d9" as const;
 export const ENTRY_POINT = "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as const;
 export const BUNDLER = "https://public.pimlico.io/v2/11142220/rpc";
 

@@ -22,6 +22,62 @@ Open `chrome://extensions`, enable **Developer mode**, select **Load unpacked**,
 
 The owner and smart-account addresses are different. The owner pays direct policy-update gas. The smart account needs enough CELO for transfers and UserOperation gas. If you import the recovery phrase into a new installation, use **Link existing account** with your prior smart-account address.
 
+## Owner delegation protection and deployment
+
+The current Solidity source rejects direct owner calls whenever the owner has
+nonempty code, including EIP-7702 delegation indicators. This applies to
+`execute` and every policy setter, even for allowlisted delegates. It prevents
+delegated code from acting as the owner to raise limits or drain the account.
+The revert is `DirectOwnerCallWithCode(owner)`.
+
+Owner-key-signed ERC-4337 UserOperations remain supported through the trusted
+EntryPoint, including policy updates executed as account self-calls. This does
+not protect against a stolen owner key or an owner signing a harmful operation.
+The extension's policy-update buttons currently use direct owner transactions;
+they require the owner's actual delegation to be revoked first if this guard is
+triggered. Removing an address from the delegate allowlist does not revoke an
+EIP-7702 delegation. The Scan button reports delegation and allowlist status;
+it is not itself an on-chain enforcement mechanism.
+
+The hardened factory deployed on Celo Sepolia (chain 11142220) is
+`0xcD0c78baa1d16F22a7FCfd0A043651F3DDd9f4d9`, now configured in
+`src/config.ts`. Its initial account is
+`0x214a78a58D316d2D286E8d7e150a8a4DB677Ec3a`, owned by
+`0x47ADF21c50D82fDC77Fc6C518659690797f6E6f2`, with PolicyManager
+`0x67E19e8b852b9f9c315749d4b162FF9a2F2a0FD4` and a 0.05 CELO per-transfer
+limit. The extension's create-account flow uses the new factory and keeps its
+existing initial limit of 1 CELO for independently created accounts.
+
+Previously deployed accounts are not upgraded. Reload the rebuilt extension
+to use the new factory for future account creation. Existing linked accounts
+and wallet storage remain unchanged. Link the initial account only if your
+extension's owner matches its owner; creating an account for a different
+extension owner requires a separate deployment through the new factory.
+Rebuilding or linking an old account does not add the guard.
+
+Run the delegation regression suite from the repository root:
+
+```bash
+forge test --match-contract Delegation7702Test -vv
+```
+
+These tests use disposable local keys and real EIP-7702 delegation semantics.
+Signed-operation tests exercise the account's validation/execution boundary;
+they are not full bundler or deployed EntryPoint integration tests. Calls to
+untrusted delegated targets remain permitted unless separately blocked, and
+policy updates do not yet have a guardian or timelock.
+
+For a read-only simulation against deployed accounts, serve `extension/examples`
+and open `http://127.0.0.1:8080/delegation-attack.html`. Keep
+`delegation-simulation.mjs` and `delegation-fixture.json` alongside the HTML.
+The fixture contains the compiled runtime of the deliberately unsafe delegate
+in `test/Delegation7702.t.sol`; it is only injected through `eth_call` state
+overrides. The page verifies delegation execution, tests a limit-change/drain
+and a direct call, and accepts only the exact owner-code guard revert as a
+blocked result. It never signs or broadcasts a delegation. The old account can
+be selected as a vulnerable comparison. This checks these specific contract
+paths, not the full extension or all possible attacks.
+
 The extension locks after ten minutes of inactivity or when its background worker restarts. The recovery phrase is stored encrypted with PBKDF2-SHA256 (600,000 iterations) and AES-256-GCM. If the creation popup closes before you write down the phrase, unlock and use **Security → Reveal for 30 seconds** with your password. If you lose both the phrase and extension data, the wallet cannot be recovered.
 
 ## Connect a website
