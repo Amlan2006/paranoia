@@ -209,5 +209,62 @@ contract ParanoiaAccountTest is Test {
         vm.prank(owner);
         account.execute(address(token), 0, approval);
         assertEq(token.allowance(address(account), address(maliciousSpender)), 0);
+
+        vm.expectRevert();
+        maliciousSpender.drain(token, address(account), recipient);
+        assertEq(token.balanceOf(address(account)), 100e18);
+        assertEq(token.balanceOf(recipient), 0);
+    }
+
+    function testDemoSixHundredthsBlockedByFiveHundredthsLimit() public {
+        vm.prank(owner);
+        account.setMaxNativeTransfer(0.05 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(PolicyManager.SpendingLimitExceeded.selector, 0.06 ether, 0.05 ether)
+        );
+        vm.prank(owner);
+        account.execute(recipient, 0.06 ether, "");
+        assertEq(recipient.balance, 0);
+        assertEq(address(account).balance, 10 ether);
+    }
+
+    // These tests document current protection gaps. Passing means the attack
+    // or risky action is possible, not that the wallet blocked it.
+    function testKnownGapFiniteApprovalCanDrainEntireTokenBalance() public {
+        vm.prank(owner);
+        account.execute(
+            address(token), 0, abi.encodeCall(token.approve, (address(maliciousSpender), 100e18))
+        );
+        maliciousSpender.drain(token, address(account), recipient);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(token.balanceOf(recipient), 100e18);
+    }
+
+    function testKnownGapBlockedSpenderCanStillReceiveApprovalViaToken() public {
+        vm.startPrank(owner);
+        account.setTargetBlocked(address(maliciousSpender), true);
+        account.execute(
+            address(token), 0, abi.encodeCall(token.approve, (address(maliciousSpender), 100e18))
+        );
+        vm.stopPrank();
+        maliciousSpender.drain(token, address(account), recipient);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(token.balanceOf(recipient), 100e18);
+    }
+
+    function testKnownGapUnknownContractCallIsAllowed() public {
+        assertFalse(policyManager.trustedTargets(address(target)));
+        assertFalse(policyManager.blockedTargets(address(target)));
+        vm.prank(owner);
+        account.execute(address(target), 0, abi.encodeCall(target.ping, ()));
+    }
+
+    function testKnownGapNativeLimitIsPerCallNotCumulative() public {
+        vm.startPrank(owner);
+        account.setMaxNativeTransfer(0.05 ether);
+        account.execute(recipient, 0.04 ether, "");
+        account.execute(recipient, 0.04 ether, "");
+        vm.stopPrank();
+        assertEq(recipient.balance, 0.08 ether);
     }
 }

@@ -15,6 +15,7 @@ contract ParanoiaAccount is Account, SignerECDSA {
 
     error Unauthorized();
     error InvalidAddress();
+    error DirectOwnerCallWithCode(address owner);
     error ExecutionFailed(bytes returnData);
 
     IEntryPoint private immutable _entryPoint;
@@ -39,15 +40,24 @@ contract ParanoiaAccount is Account, SignerECDSA {
     }
 
     modifier onlyAuthorizedExecutor() {
-        if (msg.sender != owner() && msg.sender != address(entryPoint())) revert Unauthorized();
+        if (msg.sender == owner()) _checkDirectOwner();
+        else if (msg.sender != address(entryPoint())) revert Unauthorized();
         _;
     }
 
     /// @dev `address(this)` permits a validated UserOperation to call a policy
     /// update through execute(address(this), 0, calldata).
     modifier onlyOwnerOrSelf() {
-        if (msg.sender != owner() && msg.sender != address(this)) revert Unauthorized();
+        if (msg.sender == owner()) _checkDirectOwner();
+        else if (msg.sender != address(this)) revert Unauthorized();
         _;
+    }
+
+    /// @dev Delegated code executes as the owner EOA, so sender identity alone
+    /// is insufficient. Reject ALL owner code, including allowlisted delegates.
+    /// Key-signed UserOperations remain available through the trusted EntryPoint.
+    function _checkDirectOwner() internal view {
+        if (msg.sender.code.length != 0) revert DirectOwnerCallWithCode(msg.sender);
     }
 
     /// @dev EntryPoint v0.7 UserOperation hashes are signed with EIP-191.
