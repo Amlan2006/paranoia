@@ -103,3 +103,24 @@ python3 -m http.server 8080
 Open `http://127.0.0.1:8080/dapp.html` in Chrome. The test page never sends until you enter a recipient and approve the request.
 
 This MVP supports `eth_accounts`, `eth_requestAccounts`, `eth_chainId`, `net_version`, `wallet_switchEthereumChain` for Celo Sepolia, selected read-only RPC methods, and `eth_sendTransaction`. It does not support `personal_sign`, typed-data signing, token swaps, or transactions sent from MetaMask. The existing Paranoia web dashboard is still pinned to the earlier smart account; connecting that dashboard to a newly created extension account needs a separate dashboard migration. Do not rely on this testnet extension for mainnet assets or production use without an independent security review.
+# Multiple accounts
+
+Open **Account 1 · Manage accounts** in the unlocked wallet. Enter your wallet
+password and an optional name, then choose **Add account**. To switch, select an
+account, enter your password, and choose **Switch account**.
+
+All owners derive from the same encrypted recovery phrase using
+`m/44'/60'/0'/0/index`. The original wallet becomes Account 1 without changing
+its owner, linked smart account, or existing website permissions. Names, indexes,
+the selected account and smart-account links persist locally.
+
+Each new owner needs test CELO for smart-account deployment; adding an owner does
+not deploy a contract or move funds. Each account has separate website permissions.
+Switching cancels waiting website approvals and emits `accountsChanged`; connect
+again to authorize a website for a new account. Already submitted operations
+continue for their original account.
+
+Recovery on a fresh installation restores Account 1 first. Add accounts in the
+same order to rederive their owners, then use **Link existing account** for each
+previously deployed smart-account address. Keep a record of those addresses and
+account indexes: on-chain account discovery and metadata backup are not automatic.

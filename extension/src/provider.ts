@@ -20,6 +20,10 @@ class ParanoiaProvider {
   constructor() {
     window.addEventListener("message", (event) => {
       if (event.source !== window || event.origin !== location.origin || event.data?.source !== "paranoia-bridge") return;
+      if (event.data.event === "accountsChanged" && Array.isArray(event.data.accounts)) {
+        this.emit("accountsChanged", event.data.accounts);
+        return;
+      }
       const reply = event.data as { id?: string; result?: unknown; error?: { code?: number; message: string } };
       if (typeof reply.id !== "string") return;
       const pending = this.pending.get(reply.id);

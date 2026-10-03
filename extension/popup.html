@@ -62,6 +62,18 @@
           <button id="unlock-button" class="button primary">Unlock wallet</button>
         </section>
         <section id="wallet" class="screen" hidden>
+          <details class="card account-controls">
+            <summary id="active-account-name">Account 1 · Manage accounts</summary>
+            <label for="account-select">Your accounts</label>
+            <select id="account-select" aria-label="Select account"></select>
+            <p id="account-owner" class="fineprint"></p>
+            <label for="account-password">Password to add or switch accounts</label>
+            <input id="account-password" type="password" autocomplete="current-password" placeholder="Wallet password">
+            <button id="switch-account" class="button secondary">Switch account</button>
+            <input id="account-name" maxlength="40" placeholder="New account name (optional)" aria-label="New account name">
+            <button id="add-account" class="button secondary">+ Add account</button>
+            <p class="fineprint">Same recovery phrase. Each account has its own owner, smart account and website permissions. New smart accounts require deployment gas.</p>
+          </details>
           <div class="heading-row wallet-heading"><div><p class="eyebrow">Celo Sepolia</p><h1>My wallet</h1></div><button id="lock-button" class="icon-button" title="Lock wallet" aria-label="Lock wallet">⌁</button></div>
           <div id="deploy-card" class="card" hidden>
             <p class="eyebrow">Setup required</p>

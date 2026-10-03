@@ -12,6 +12,8 @@ type Status = {
   smartBalance?: string;
   limit?: string | null;
   policyManager?: Address | null;
+  activeIndex?: number;
+  accounts?: { index: number; name: string; owner: Address; smartAccount?: Address }[];
 };
 type Reply<T> = { ok: true; value: T } | { ok: false; error: string };
 type PendingApproval = {
@@ -40,7 +42,7 @@ function notify(message: string) {
   toastTimer = setTimeout(() => show("toast", false), 6000);
 }
 async function message<T>(type: string, fields: Record<string, unknown> = {}): Promise<T> {
-  const reply = await chrome.runtime.sendMessage({ type, ...fields }) as Reply<T>;
+  const reply = await chrome.runtime.sendMessage({ type, expectedIndex: current.activeIndex, ...fields }) as Reply<T>;
   if (!reply?.ok) throw new Error(reply?.error ?? "Wallet request failed.");
   return reply.value;
 }
@@ -69,6 +71,17 @@ async function refresh() {
     show("wallet", !!current.exists && current.unlocked);
     if (current.exists && !current.unlocked) text("locked-owner", current.owner ?? "");
     if (current.unlocked) {
+      const selector = el<HTMLSelectElement>("account-select");
+      selector.replaceChildren();
+      for (const account of current.accounts ?? []) {
+        const option = document.createElement("option");
+        option.value = String(account.index);
+        option.textContent = account.name + (account.smartAccount ? "" : " · Not deployed");
+        option.selected = account.index === current.activeIndex;
+        selector.append(option);
+      }
+      text("account-owner", "Owner: " + current.owner);
+      text("active-account-name", (current.accounts?.find((item) => item.index === current.activeIndex)?.name ?? "Account") + " · Manage accounts");
       show("deploy-card", !current.smartAccount);
       show("active-wallet", !!current.smartAccount);
       text("owner-deploy-address", current.owner ?? "");
@@ -293,3 +306,26 @@ el("dapp-reject").addEventListener("click", async () => {
   await loadApproval();
 });
 void refresh();
+
+async function accountAction(type: "ADD_ACCOUNT" | "SWITCH_ACCOUNT") {
+  const password = input("account-password");
+  el<HTMLInputElement>("account-password").value = "";
+  const result = await action(type, {
+    password, index: Number(el<HTMLSelectElement>("account-select").value), name: input("account-name"),
+  }, () => type === "ADD_ACCOUNT" ? "Account added. Fund its owner to deploy a smart account." : "Account switched.");
+  if (result) {
+    reviewedTransfer = null;
+    show("send-review", false);
+    clearRevealedPhrase();
+    for (const id of ["send-amount", "recipient", "account-name", "link-address",
+      "new-limit", "token-address", "spender-address", "token-amount", "delegate-address", "reveal-password"]) {
+      const field = document.getElementById(id) as HTMLInputElement | null;
+      if (field) field.value = "";
+    }
+    text("delegation-status", "");
+    updateRisk();
+    tab("home");
+  }
+}
+el("add-account").addEventListener("click", () => void accountAction("ADD_ACCOUNT"));
+el("switch-account").addEventListener("click", () => void accountAction("SWITCH_ACCOUNT"));

@@ -553,3 +553,15 @@ footer {
   .button,
   .quick-icon { transition: none; }
 }
+/* Account chooser shares the wallet's existing dark/red visual language. */
+.account-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  color: #f5f5f7;
+  background: #29292e;
+  border: 1px solid #414147;
+  border-radius: 12px;
+  font: inherit;
+}
+.account-controls .fineprint { overflow-wrap: anywhere; }

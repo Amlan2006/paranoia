@@ -1,5 +1,12 @@
 type BackgroundReply = { ok: true; value: unknown } | { ok: false; error: string; code?: number };
 
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (sender.id !== chrome.runtime.id || message.type !== "REFRESH_ACCOUNTS") return;
+  void extensionMessage({ type: "DAPP_REQUEST", method: "eth_accounts" }).then((reply) => {
+    if (reply.ok) window.postMessage({ source: "paranoia-bridge", event: "accountsChanged", accounts: reply.value }, location.origin);
+  });
+});
+
 async function extensionMessage(payload: Record<string, unknown>): Promise<BackgroundReply> {
   try {
     const reply = await chrome.runtime.sendMessage(payload) as BackgroundReply | undefined;
