@@ -2,9 +2,14 @@ import { isAddress, isHex, type Address, type Hex } from "viem";
 
 export type DappTransaction = { to: Address; value: bigint; data: Hex };
 
-export function parseDappTransaction(value: unknown, smartAccount: Address): DappTransaction {
+export function parseDappTransaction(value: unknown, smartAccount: Address, chainId?: number): DappTransaction {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid transaction request.");
   const tx = value as Record<string, unknown>;
+  if (tx.chainId !== undefined && chainId !== undefined) {
+    try {
+      if (!["number", "string"].includes(typeof tx.chainId) || BigInt(tx.chainId as string) !== BigInt(chainId)) throw new Error();
+    } catch { throw new Error("Transaction chain ID does not match the selected network."); }
+  }
   if (tx.from !== undefined && (typeof tx.from !== "string" || tx.from.toLowerCase() !== smartAccount.toLowerCase())) {
     throw new Error("Transaction sender must be your Paranoia smart account.");
   }

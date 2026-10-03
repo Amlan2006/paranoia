@@ -124,3 +124,61 @@ Recovery on a fresh installation restores Account 1 first. Add accounts in the
 same order to rederive their owners, then use **Link existing account** for each
 previously deployed smart-account address. Keep a record of those addresses and
 account indexes: on-chain account discovery and metadata backup are not automatic.
+# Multiple testnets
+
+The extension supports Celo Sepolia (11142220, CELO), Ethereum Sepolia
+(11155111, ETH), BNB Smart Chain Testnet (97, tBNB), and Polygon Amoy
+(80002, POL). Unlock and use **Testnet → Switch testnet**.
+
+Owners use the same derived signing address across networks, but smart accounts,
+balances, policies and website permissions are network-specific. Existing saved
+accounts migrate to Celo only. Network selection persists across restarts.
+Switching does not bridge or transfer any funds.
+
+Celo already has a configured factory. The three added testnets require their own
+Paranoia factory deployment. Until one is configured, account deployment is
+disabled. Existing accounts can instead be linked on the selected network after
+owner and EntryPoint checks. A linked account's source/security still needs to be
+trusted; those checks are not a bytecode audit.
+
+## Deploy the factory on a new testnet
+
+From the repository root, set your owner address (public, not a private key) and
+choose ONE network RPC, then run the existing deployment script:
+
+```bash
+export OWNER="0xYOUR_OWNER_ADDRESS"
+export ENTRY_POINT="0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+export MAX_NATIVE_TRANSFER="50000000000000000"
+
+# Choose one:
+export DEPLOY_RPC="https://ethereum-sepolia-rpc.publicnode.com"
+# export DEPLOY_RPC="https://bsc-testnet-dataseed.bnbchain.org"
+# export DEPLOY_RPC="https://polygon-amoy-bor-rpc.publicnode.com"
+
+forge script script/Deploy.s.sol:Deploy --rpc-url "$DEPLOY_RPC" --interactive --broadcast
+```
+
+The script deploys a factory and one account with a 0.05 native-token per-call limit.
+The signer entered at the terminal needs native testnet tokens for gas. Never
+paste a private key or recovery phrase into the factory settings.
+
+After deployment, select the matching testnet in the extension and expand
+**Factory configuration**. Save the logged **ParanoiaAccountFactory** address.
+The extension checks RPC chain ID, code presence, and EntryPoint v0.7 bundler
+support. Only configure a factory you deployed or trust: code presence does not
+prove it is a genuine Paranoia factory. Then deploy an account from the extension
+(default limit: 1 native token), or link the script's account if its owner matches.
+
+The configured public bundlers are
+`https://public.pimlico.io/v2/CHAIN_ID/rpc`. Public RPC and bundler availability/
+rate limits may vary. All three RPC chain IDs and all four bundlers' v0.7 support
+were checked with read-only requests during implementation; no new deployments
+or cross-network transfers were broadcast.
+
+Website providers return the selected chain from `eth_chainId`/`net_version`
+and emit `chainChanged` plus an updated `accountsChanged` on switching. A
+website requesting a different chain via `wallet_switchEthereumChain` receives
+instructions to switch manually in the extension and retry; websites cannot
+silently switch the wallet. Waiting approvals are cancelled on a switch; already
+submitted operations keep polling their original network.

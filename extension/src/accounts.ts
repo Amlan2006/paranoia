@@ -7,8 +7,23 @@ export type WalletAccount = {
   owner: Address;
   smartAccount?: Address;
   origins: string[];
+  networks?: Record<number, { smartAccount?: Address; origins: string[] }>;
 };
 export type AccountBook = { active: number; accounts: WalletAccount[] };
+
+export function migrateNetworks(book: AccountBook): boolean {
+  let changed = false;
+  for (const account of book.accounts) {
+    if (!account.networks) {
+      account.networks = { 11142220: { smartAccount: account.smartAccount, origins: [...account.origins] } };
+      changed = true;
+    }
+  }
+  return changed;
+}
+export function accountNetwork(book: AccountBook, chainId: number) {
+  return activeAccount(book).networks?.[chainId] ?? { origins: [] as string[] };
+}
 
 export function deriveOwner(mnemonic: string, index: number) {
   if (!Number.isSafeInteger(index) || index < 0 || index >= 0x80000000) {

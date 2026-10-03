@@ -24,6 +24,10 @@ class ParanoiaProvider {
         this.emit("accountsChanged", event.data.accounts);
         return;
       }
+      if (event.data.event === "chainChanged" && typeof event.data.chainId === "string") {
+        this.emit("chainChanged", event.data.chainId);
+        return;
+      }
       const reply = event.data as { id?: string; result?: unknown; error?: { code?: number; message: string } };
       if (typeof reply.id !== "string") return;
       const pending = this.pending.get(reply.id);

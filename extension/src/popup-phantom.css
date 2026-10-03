@@ -565,3 +565,5 @@ footer {
   font: inherit;
 }
 .account-controls .fineprint { overflow-wrap: anywhere; }
+.network-controls { margin-bottom: 20px; }
+.topbar .network { max-width: 48%; font-size: 11px; }

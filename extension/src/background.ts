@@ -4,10 +4,10 @@ import {
   type Address, type Hex,
 } from "viem";
 import { mnemonicToAccount, type HDAccount } from "viem/accounts";
-import { accountAbi, BUNDLER, chain, ENTRY_POINT, FACTORY, factoryAbi, policyAbi } from "./config";
+import { accountAbi, chain as defaultChain, ENTRY_POINT, networkById, factoryAbi, policyAbi } from "./config";
 import { parseDappTransaction, transactionSummary } from "./dapp";
 import { decryptMnemonic, encryptMnemonic, newMnemonic, normalizeMnemonic, type EncryptedVault } from "./vault";
-import { activeAccount, appendAccount, deriveOwner, migrateAccount, type AccountBook } from "./accounts";
+import { activeAccount, accountNetwork, migrateNetworks, appendAccount, deriveOwner, migrateAccount, type AccountBook } from "./accounts";
 
 const VAULT_KEY = "paranoiaVault";
 const BOOK_KEY = "paranoiaAccounts";
@@ -16,7 +16,54 @@ const CONNECTIONS_KEY = "paranoiaConnectedOrigins";
 const PENDING_PREFIX = "paranoiaPending:";
 const PENDING_MS = 10 * 60 * 1000;
 const UNLOCK_MS = 10 * 60 * 1000;
-const publicClient = createPublicClient({ chain, transport: http() });
+const NETWORK_KEY = "paranoiaNetwork";
+const FACTORIES_KEY = "paranoiaFactories";
+let chain = networkById(defaultChain.id).chain;
+let publicClient = createPublicClient({ chain, transport: http() });
+async function loadNetwork() {
+  const state = await chrome.storage.local.get(NETWORK_KEY);
+  chain = networkById((state[NETWORK_KEY] as number | undefined) ?? defaultChain.id).chain;
+  publicClient = createPublicClient({ chain, transport: http() });
+}
+async function configuredFactory(): Promise<Address | undefined> {
+  const state = await chrome.storage.local.get(FACTORIES_KEY);
+  return (state[FACTORIES_KEY] as Record<number, Address> | undefined)?.[chain.id] ?? networkById(chain.id).factory;
+}
+async function checkNetworkInfrastructure(factory: Address) {
+  if (await publicClient.getChainId() !== chain.id) throw new Error("RPC chain ID mismatch.");
+  const [factoryCode, entryCode, entries] = await Promise.all([
+    publicClient.getCode({ address: factory }), publicClient.getCode({ address: ENTRY_POINT }),
+    rpc<string[]>("eth_supportedEntryPoints", []),
+  ]);
+  if (!factoryCode || factoryCode === "0x") throw new Error("No factory contract at that address on " + chain.name + ".");
+  if (!entryCode || entryCode === "0x" || !entries.some((entry) => entry.toLowerCase() === ENTRY_POINT.toLowerCase())) {
+    throw new Error("EntryPoint v0.7 is unavailable on this network or bundler.");
+  }
+}
+async function switchNetwork(value: unknown) {
+  requireSigner();
+  if (typeof value !== "number") throw new Error("Invalid network.");
+  const next = networkById(value);
+  if (next.chain.id === chain.id) return { chainId: chain.id };
+  const entries = await chrome.storage.session.get(null);
+  for (const [key, value] of Object.entries(entries)) {
+    const pending = value as Pending;
+    if (key.startsWith(PENDING_PREFIX) && pending.status === "waiting") {
+      pending.status = "error"; pending.error = "Network changed. Request again.";
+      await putPending(pending);
+    }
+  }
+  await chrome.storage.local.set({ [NETWORK_KEY]: next.chain.id });
+  await loadNetwork();
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs.map(async (tab) => {
+    if (tab.id === undefined) return;
+    try { await chrome.tabs.sendMessage(tab.id, { type: "CHAIN_CHANGED", chainId: toHex(chain.id) }); }
+    catch { /* No bridge on this tab. */ }
+  }));
+  await notifyAccountsChanged();
+  return { chainId: chain.id };
+}
 let signer: HDAccount | null = null;
 let unlockedAt = 0;
 const openingApprovalTabs = new Set<number>();
@@ -28,6 +75,7 @@ type Pending = {
   createdAt: number; status: "waiting" | "processing" | "submitted" | "result" | "error";
   transaction?: { from: Address; to: Address; value: string; data: Hex };
   operationHash?: Hex; result?: unknown; error?: string; windowId?: number;
+  chainId?: number; accountIndex?: number;
 };
 
 const entryPointAbi = [
@@ -56,7 +104,7 @@ function requireAddress(value: unknown): Address {
   return value;
 }
 function requireAmount(value: unknown): bigint {
-  if (typeof value !== "string" || !/^\d+(?:\.\d{1,18})?$/.test(value)) throw new Error("Enter a valid CELO amount.");
+  if (typeof value !== "string" || !/^\d+(?:\.\d{1,18})?$/.test(value)) throw new Error("Enter a valid native-token amount.");
   const amount = parseEther(value);
   if (amount <= 0n) throw new Error("Amount must be greater than zero.");
   return amount;
@@ -68,14 +116,17 @@ async function saved(): Promise<Saved> {
       Array.isArray(state[CONNECTIONS_KEY]) ? state[CONNECTIONS_KEY] : []);
     await chrome.storage.local.set({ [BOOK_KEY]: state[BOOK_KEY] });
   }
-  if (state[BOOK_KEY]) state[ACCOUNT_KEY] = activeAccount(state[BOOK_KEY]).smartAccount;
+  if (state[BOOK_KEY]) {
+    if (migrateNetworks(state[BOOK_KEY])) await chrome.storage.local.set({ [BOOK_KEY]: state[BOOK_KEY] });
+    state[ACCOUNT_KEY] = accountNetwork(state[BOOK_KEY], chain.id).smartAccount;
+  }
   return state as Saved;
 }
 async function updateActive(values: Partial<Pick<ReturnType<typeof activeAccount>, "smartAccount" | "origins">>) {
   const state = await saved();
   const book = state[BOOK_KEY];
   if (!book) throw new Error("Wallet not found.");
-  Object.assign(activeAccount(book), values);
+  activeAccount(book).networks![chain.id] = { ...accountNetwork(book, chain.id), ...values };
   await chrome.storage.local.set({ [BOOK_KEY]: book });
 }
 async function notifyAccountsChanged() {
@@ -118,8 +169,8 @@ async function changeAccount(request: Request) {
   await notifyAccountsChanged();
   return { owner: selected.owner };
 }
-async function rpc<T>(method: string, params: unknown[]): Promise<T> {
-  const response = await fetch(BUNDLER, {
+async function rpc<T>(method: string, params: unknown[], chainId = chain.id): Promise<T> {
+  const response = await fetch(networkById(chainId).bundler, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -135,9 +186,9 @@ async function publicRpc(method: string, params: unknown[]): Promise<unknown> {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
-  if (!response.ok) throw new Error("Celo RPC is unavailable.");
+  if (!response.ok) throw new Error(chain.name + " RPC is unavailable.");
   const payload = await response.json() as { result?: unknown; error?: { message?: string } };
-  if (payload.error) throw new Error(payload.error.message ?? "Celo RPC rejected the request.");
+  if (payload.error) throw new Error(payload.error.message ?? "Network RPC rejected the request.");
   return payload.result ?? null;
 }
 function pendingKey(id: string) { return PENDING_PREFIX + id; }
@@ -155,7 +206,7 @@ async function getPending(id: unknown): Promise<Pending | null> {
 async function putPending(value: Pending) { await chrome.storage.session.set({ [pendingKey(value.id)]: value }); }
 async function connections(): Promise<string[]> {
   const state = await saved();
-  return state[BOOK_KEY] ? activeAccount(state[BOOK_KEY]).origins : [];
+  return state[BOOK_KEY] ? accountNetwork(state[BOOK_KEY], chain.id).origins : [];
 }
 function dappOrigin(sender: chrome.runtime.MessageSender): string {
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || sender.tab?.id === undefined || !sender.url) {
@@ -178,7 +229,9 @@ async function makePending(origin: string, tabId: number, method: Pending["metho
     if (active.some((previous) => previous.tabId === tabId)) throw new Error("Another Paranoia request is already pending for this tab.");
     if (active.length >= 10) throw new Error("Too many wallet requests are pending. Resolve or close an approval window.");
     const id = crypto.randomUUID();
-    const pending: Pending = { id, origin, tabId, method, transaction, createdAt: Date.now(), status: "waiting" };
+    const state = await saved();
+    const pending: Pending = { id, origin, tabId, method, transaction, createdAt: Date.now(), status: "waiting",
+      chainId: chain.id, accountIndex: state[BOOK_KEY]?.active };
     await putPending(pending);
     try {
       const window = await chrome.windows.create({ url: chrome.runtime.getURL("popup.html?approval=" + id), type: "popup", width: 430, height: 760, focused: true });
@@ -209,7 +262,10 @@ async function dappRequest(request: Request, sender: chrome.runtime.MessageSende
   if (method === "net_version") return String(chain.id);
   if (method === "wallet_switchEthereumChain") {
     if ((params[0] as { chainId?: unknown } | undefined)?.chainId === "0x" + chain.id.toString(16)) return null;
-    throw new Error("Paranoia only supports Celo Sepolia.");
+    const requested = (params[0] as { chainId?: unknown } | undefined)?.chainId;
+    if (typeof requested !== "string" || !/^0x[0-9a-f]+$/i.test(requested)) throw new Error("Invalid chain ID.");
+    const target = networkById(Number(BigInt(requested)));
+    throw new Error("Switch to " + target.chain.name + " in the Paranoia network selector, then retry.");
   }
   if (READ_METHODS.has(method)) return publicRpc(method, params);
   const state = await saved();
@@ -221,7 +277,7 @@ async function dappRequest(request: Request, sender: chrome.runtime.MessageSende
   }
   if (method === "eth_sendTransaction") {
     if (!connected || !signer || !state[ACCOUNT_KEY]) throw new Error("Connect and unlock Paranoia before sending.");
-    const tx = parseDappTransaction(params[0], state[ACCOUNT_KEY]);
+    const tx = parseDappTransaction(params[0], state[ACCOUNT_KEY], chain.id);
     return makePending(origin, sender.tab!.id!, method, transactionSummary(tx, state[ACCOUNT_KEY]));
   }
   throw new Error("Unsupported wallet method: " + method);
@@ -232,7 +288,7 @@ async function dappPoll(request: Request, sender: chrome.runtime.MessageSender) 
   if (!pending || pending.origin !== origin || pending.tabId !== sender.tab!.id) throw new Error("Request expired or does not belong to this tab.");
   if (pending.status === "submitted" && pending.operationHash) {
     let result: { success: boolean; receipt?: { transactionHash?: Hex } } | null = null;
-    try { result = await rpc("eth_getUserOperationReceipt", [pending.operationHash]); }
+    try { result = await rpc("eth_getUserOperationReceipt", [pending.operationHash], pending.chainId ?? defaultChain.id); }
     catch { return { waiting: true }; }
     if (result) {
       if (!result.success || !result.receipt?.transactionHash) {
@@ -256,7 +312,8 @@ async function dappPoll(request: Request, sender: chrome.runtime.MessageSender) 
 async function pendingForPopup(id: unknown) {
   const pending = await getPending(id);
   if (!pending) return null;
-  return { id: pending.id, origin: pending.origin, method: pending.method, status: pending.status, transaction: pending.transaction, operationHash: pending.operationHash };
+  return { id: pending.id, origin: pending.origin, method: pending.method, status: pending.status, transaction: pending.transaction, operationHash: pending.operationHash,
+    chainId: pending.chainId ?? defaultChain.id };
 }
 async function resolvePending(id: unknown, approved: unknown) {
   const pending = await getPending(id);
@@ -268,6 +325,9 @@ async function resolvePending(id: unknown, approved: unknown) {
   }
   const state = await saved();
   requireSigner();
+  if ((pending.chainId ?? defaultChain.id) !== chain.id || (pending.accountIndex ?? 0) !== state[BOOK_KEY]?.active) {
+    throw new Error("Account or network changed. Request again.");
+  }
   if (!state[ACCOUNT_KEY]) throw new Error("Deploy or link your smart account before approving.");
   if (pending.method === "eth_requestAccounts") {
     const allowed = await connections();
@@ -281,7 +341,7 @@ async function resolvePending(id: unknown, approved: unknown) {
   pending.status = "processing";
   await putPending(pending);
   try {
-    const tx = parseDappTransaction(pending.transaction, state[ACCOUNT_KEY]);
+    const tx = parseDappTransaction(pending.transaction, state[ACCOUNT_KEY], chain.id);
     const { userOperationHash } = await submitCall(tx.to, tx.value, tx.data);
     pending.status = "submitted"; pending.operationHash = userOperationHash;
     await putPending(pending);
@@ -294,7 +354,8 @@ async function resolvePending(id: unknown, approved: unknown) {
 }
 async function walletStatus() {
   const state = await saved();
-  if (!state[VAULT_KEY]) return { exists: false, unlocked: false };
+  const networkInfo = { chainId: chain.id, factory: await configuredFactory() ?? null };
+  if (!state[VAULT_KEY]) return { exists: false, unlocked: false, ...networkInfo };
   const selected = activeAccount(state[BOOK_KEY]!);
   const owner = selected.owner;
   const smartAccount = state[ACCOUNT_KEY] ?? null;
@@ -316,8 +377,8 @@ async function walletStatus() {
     // The vault remains usable while the public RPC is temporarily unavailable.
   }
   if (signer && Date.now() - unlockedAt > UNLOCK_MS) signer = null;
-  return { exists: true, unlocked: !!signer, owner, smartAccount, activeIndex: selected.index,
-    accounts: state[BOOK_KEY]!.accounts.map(({ index, name, owner, smartAccount }) => ({ index, name, owner, smartAccount })),
+  return { exists: true, unlocked: !!signer, owner, smartAccount, activeIndex: selected.index, ...networkInfo,
+    accounts: state[BOOK_KEY]!.accounts.map(({ index, name, owner, networks }) => ({ index, name, owner, smartAccount: networks?.[chain.id]?.smartAccount })),
     ownerBalance: ownerBalance === null ? null : formatEther(ownerBalance), smartBalance: smartBalance === null ? null : formatEther(smartBalance), limit, policyManager };
 }
 async function createWallet(password: unknown, phrase?: unknown) {
@@ -354,6 +415,9 @@ async function deployAccount() {
   const account = requireSigner();
   const state = await saved();
   if (state[ACCOUNT_KEY]) throw new Error("A smart account is already linked.");
+  const FACTORY = await configuredFactory();
+  if (!FACTORY) throw new Error("Deploy and configure a Paranoia factory on " + chain.name + " first.");
+  await checkNetworkInfrastructure(FACTORY);
   const client = createWalletClient({ account, chain, transport: http() });
   const hash = await client.writeContract({
     address: FACTORY, abi: factoryAbi, functionName: "createAccount",
@@ -372,6 +436,8 @@ async function linkAccount(value: unknown) {
   const smartAccount = requireAddress(value);
   const contractOwner = await publicClient.readContract({ address: smartAccount, abi: accountAbi, functionName: "owner" });
   if (contractOwner.toLowerCase() !== owner.toLowerCase()) throw new Error("That smart account belongs to a different owner.");
+  const entryPoint = await publicClient.readContract({ address: smartAccount, abi: accountAbi, functionName: "entryPoint" });
+  if (entryPoint.toLowerCase() !== ENTRY_POINT.toLowerCase()) throw new Error("Unsupported EntryPoint on this account.");
   await updateActive({ smartAccount, origins: [] });
   await notifyAccountsChanged();
   return { smartAccount };
@@ -395,9 +461,9 @@ async function submitCall(target: Address, value: bigint, data: Hex) {
   if (!smartAccount) throw new Error("Deploy or link your smart account first.");
   const policyManager = await publicClient.readContract({ address: smartAccount, abi: accountAbi, functionName: "policyManager" });
   const limit = await publicClient.readContract({ address: policyManager, abi: policyAbi, functionName: "maxNativeTransfer" });
-  if (value > limit) throw new Error("SPENDING_LIMIT_EXCEEDED: transaction exceeds " + formatEther(limit) + " CELO.");
+  if (value > limit) throw new Error("SPENDING_LIMIT_EXCEEDED: transaction exceeds " + formatEther(limit) + " " + chain.nativeCurrency.symbol + ".");
   const balance = await publicClient.getBalance({ address: smartAccount });
-  if (value > balance) throw new Error("The smart account does not have enough CELO.");
+  if (value > balance) throw new Error("The smart account does not have enough " + chain.nativeCurrency.symbol + ".");
   const callData = encodeFunctionData({ abi: accountAbi, functionName: "execute", args: [target, value, data] });
   const nonce = await publicClient.readContract({ address: ENTRY_POINT, abi: entryPointAbi, functionName: "getNonce", args: [smartAccount, 0n] });
   const fees = await publicClient.estimateFeesPerGas();
@@ -456,15 +522,27 @@ async function scan7702() {
 }
 async function handle(request: Request) {
   const accountActions = ["DEPLOY", "LINK", "SEND", "APPROVE", "SET_LIMIT", "ADD_DELEGATE",
-    "REMOVE_DELEGATE", "SCAN_7702", "RESOLVE_PENDING", "REVOKE_CONNECTION", "ADD_ACCOUNT", "SWITCH_ACCOUNT"];
+    "REMOVE_DELEGATE", "SCAN_7702", "RESOLVE_PENDING", "REVOKE_CONNECTION", "ADD_ACCOUNT", "SWITCH_ACCOUNT", "SET_FACTORY", "SWITCH_NETWORK"];
   if (accountActions.includes(request.type)) {
     const state = await saved();
     if (request.expectedIndex !== state[BOOK_KEY]?.active) {
       throw new Error("Active account changed. Refresh the wallet and review again.");
     }
+    if (request.expectedChainId !== chain.id) throw new Error("Network changed. Refresh and review again.");
   }
   switch (request.type) {
     case "STATUS": return walletStatus();
+    case "SWITCH_NETWORK": return switchNetwork(request.chainId);
+    case "SET_FACTORY": {
+      requireSigner();
+      const factory = requireAddress(request.address);
+      await checkNetworkInfrastructure(factory);
+      const state = await chrome.storage.local.get(FACTORIES_KEY);
+      await chrome.storage.local.set({ [FACTORIES_KEY]: {
+        ...(state[FACTORIES_KEY] as Record<number, Address> ?? {}), [chain.id]: factory,
+      } });
+      return { factory };
+    }
     case "CREATE": return createWallet(request.password);
     case "IMPORT": return createWallet(request.password, request.recoveryPhrase);
     case "UNLOCK": return unlock(request.password);
@@ -509,7 +587,10 @@ chrome.runtime.onMessage.addListener((request: Request, sender, sendResponse) =>
     sendResponse({ ok: false, error: "Unauthorized caller." });
     return false;
   }
-  const work = workQueue.then(() => isPopup ? handle(request) : request.type === "DAPP_REQUEST" ? dappRequest(request, sender) : dappPoll(request, sender));
+  const work = workQueue.then(async () => {
+    await loadNetwork();
+    return isPopup ? handle(request) : request.type === "DAPP_REQUEST" ? dappRequest(request, sender) : dappPoll(request, sender);
+  });
   workQueue = work.catch(() => {});
   work.then(
     (value) => sendResponse({ ok: true, value }),

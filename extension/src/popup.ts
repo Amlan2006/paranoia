@@ -1,4 +1,5 @@
 import { formatEther, isAddress, parseEther, type Address } from "viem";
+import { NETWORKS, networkById } from "./config";
 import "./popup.css";
 import "./popup-wide.css";
 import "./popup-phantom.css";
@@ -14,13 +15,18 @@ type Status = {
   policyManager?: Address | null;
   activeIndex?: number;
   accounts?: { index: number; name: string; owner: Address; smartAccount?: Address }[];
+  chainId?: number;
+  factory?: Address | null;
 };
 type Reply<T> = { ok: true; value: T } | { ok: false; error: string };
 type PendingApproval = {
   id: string; origin: string; method: "eth_requestAccounts" | "eth_sendTransaction";
   status: string; transaction?: { from: Address; to: Address; value: string; data: string }; operationHash?: string;
+  chainId: number;
 };
 let current: Status = { exists: false, unlocked: false };
+function selectedNetwork() { return networkById(current.chainId ?? 11142220).chain; }
+function symbol() { return selectedNetwork().nativeCurrency.symbol; }
 const approvalId = new URLSearchParams(location.search).get("approval");
 let setupMode: "create" | "import" = "create";
 let pendingPhrase: string | null = null;
@@ -42,7 +48,7 @@ function notify(message: string) {
   toastTimer = setTimeout(() => show("toast", false), 6000);
 }
 async function message<T>(type: string, fields: Record<string, unknown> = {}): Promise<T> {
-  const reply = await chrome.runtime.sendMessage({ type, expectedIndex: current.activeIndex, ...fields }) as Reply<T>;
+  const reply = await chrome.runtime.sendMessage({ type, expectedIndex: current.activeIndex, expectedChainId: current.chainId, ...fields }) as Reply<T>;
   if (!reply?.ok) throw new Error(reply?.error ?? "Wallet request failed.");
   return reply.value;
 }
@@ -60,12 +66,32 @@ async function action<T>(type: string, fields: Record<string, unknown> = {}, suc
     document.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
       if (button.id !== "finish-backup") button.disabled = false;
     });
+    el<HTMLButtonElement>("deploy-button").disabled = !current.factory;
     if (approvalId) void loadApproval().catch(() => {});
   }
 }
 async function refresh() {
   try {
+    const previous = current;
     current = await message<Status>("STATUS");
+    if (previous.exists && (previous.activeIndex !== current.activeIndex || previous.chainId !== current.chainId)) {
+      clearTransactionDrafts();
+    }
+    const network = selectedNetwork();
+    document.querySelectorAll<HTMLElement>("[data-network-name]").forEach((item) => item.textContent = network.name);
+    document.querySelectorAll<HTMLElement>("[data-native-symbol]").forEach((item) => item.textContent = symbol());
+    text("native-icon", symbol().slice(0, 1));
+    const networks = el<HTMLSelectElement>("network-select");
+    networks.replaceChildren();
+    for (const item of NETWORKS) {
+      const option = document.createElement("option");
+      option.value = String(item.chain.id); option.textContent = item.chain.name;
+      option.selected = item.chain.id === network.id; networks.append(option);
+    }
+    text("network-setup-status", current.factory ? "Factory configured on " + network.name + "."
+      : "Setup required: deploy a Paranoia factory on " + network.name + " and save its address below.");
+    el<HTMLInputElement>("factory-address").value = current.factory ?? "";
+    el<HTMLButtonElement>("deploy-button").disabled = !current.factory;
     show("welcome", !current.exists);
     show("unlock", !!current.exists && !current.unlocked);
     show("wallet", !!current.exists && current.unlocked);
@@ -85,14 +111,15 @@ async function refresh() {
       show("deploy-card", !current.smartAccount);
       show("active-wallet", !!current.smartAccount);
       text("owner-deploy-address", current.owner ?? "");
-      text("owner-balance", current.ownerBalance === null ? "Unavailable" : (current.ownerBalance ?? "—") + " CELO");
+      text("owner-balance", current.ownerBalance === null ? "Unavailable" : (current.ownerBalance ?? "—") + " " + symbol());
+      text("deployment-owner-balance", "Owner gas balance: " + (current.ownerBalance ?? "Unavailable") + " " + symbol());
       if (current.smartAccount) {
         const visibleBalance = current.smartBalance === null ? "—" : displayBalance(current.smartBalance ?? "0");
         text("smart-balance", visibleBalance);
-        text("smart-balance-asset", visibleBalance + " CELO");
+        text("smart-balance-asset", visibleBalance + " " + symbol());
         text("copy-smart", current.smartAccount.slice(0, 6) + "…" + current.smartAccount.slice(-4));
         text("receive-address", current.smartAccount);
-        text("current-limit", current.limit === null ? "Unavailable" : (current.limit ?? "—") + " CELO");
+        text("current-limit", current.limit === null ? "Unavailable" : (current.limit ?? "—") + " " + symbol());
         updateRisk();
       }
     }
@@ -108,6 +135,7 @@ async function loadApproval() {
   if (!pending) { show("dapp-approval", false); return; }
   show("dapp-approval", true);
   text("dapp-origin", pending.origin);
+  text("dapp-network", networkById(pending.chainId).chain.name);
   text("dapp-title", pending.method === "eth_requestAccounts" ? "Connect website" : "Approve transaction");
   const tx = pending.transaction;
   show("dapp-transaction", !!tx);
@@ -115,7 +143,7 @@ async function loadApproval() {
   if (tx) {
     text("dapp-from", tx.from);
     text("dapp-to", tx.to);
-    text("dapp-value", formatEther(BigInt(tx.value)) + " CELO");
+    text("dapp-value", formatEther(BigInt(tx.value)) + " " + networkById(pending.chainId).chain.nativeCurrency.symbol);
     text("dapp-data", tx.data);
     show("dapp-call-warning", tx.data !== "0x");
   }
@@ -163,13 +191,13 @@ function updateRisk() {
   const limit = parseEther(current.limit ?? "0");
   if (amount > limit) {
     element.className = "risk blocked";
-    element.textContent = "BLOCKED · Transfer exceeds your " + current.limit + " CELO limit.";
+    element.textContent = "BLOCKED · Transfer exceeds your " + current.limit + " " + symbol() + " limit.";
     return false;
   }
   const balance = parseEther(current.smartBalance ?? "0");
   if (amount > balance) {
     element.className = "risk blocked";
-    element.textContent = "The smart account needs more CELO for this transfer.";
+    element.textContent = "The smart account needs more " + symbol() + " for this transfer.";
     return false;
   }
   element.className = "risk safe";
@@ -259,7 +287,7 @@ el("review-send").addEventListener("click", () => {
   if (!isAddress(input("recipient"))) { notify("Enter a valid recipient address."); return; }
   if (!updateRisk()) { notify("This transfer cannot be submitted."); return; }
   reviewedTransfer = { recipient: input("recipient") as Address, amount: input("send-amount") };
-  text("send-summary", "Send " + reviewedTransfer.amount + " CELO to " + reviewedTransfer.recipient + " from your protected account?");
+  text("send-summary", "Send " + reviewedTransfer.amount + " " + symbol() + " to " + reviewedTransfer.recipient + " on " + selectedNetwork().name + " from your protected account?");
   show("send-review", true);
 });
 el("cancel-send").addEventListener("click", () => { reviewedTransfer = null; show("send-review", false); });
@@ -314,6 +342,10 @@ async function accountAction(type: "ADD_ACCOUNT" | "SWITCH_ACCOUNT") {
     password, index: Number(el<HTMLSelectElement>("account-select").value), name: input("account-name"),
   }, () => type === "ADD_ACCOUNT" ? "Account added. Fund its owner to deploy a smart account." : "Account switched.");
   if (result) {
+    clearTransactionDrafts();
+  }
+}
+function clearTransactionDrafts() {
     reviewedTransfer = null;
     show("send-review", false);
     clearRevealedPhrase();
@@ -325,7 +357,13 @@ async function accountAction(type: "ADD_ACCOUNT" | "SWITCH_ACCOUNT") {
     text("delegation-status", "");
     updateRisk();
     tab("home");
-  }
 }
 el("add-account").addEventListener("click", () => void accountAction("ADD_ACCOUNT"));
 el("switch-account").addEventListener("click", () => void accountAction("SWITCH_ACCOUNT"));
+el("switch-network").addEventListener("click", async () => {
+  const result = await action("SWITCH_NETWORK", { chainId: Number(el<HTMLSelectElement>("network-select").value) }, () => "Testnet switched. Funds remain on their original network.");
+  if (result) clearTransactionDrafts();
+});
+el("save-factory").addEventListener("click", async () => {
+  await action("SET_FACTORY", { address: input("factory-address") }, () => "Factory configured for this testnet.");
+});

@@ -9,7 +9,7 @@
     <div class="shell">
       <header class="topbar">
         <div class="brand"><span class="brand-mark">◈</span><span>paranoia</span></div>
-        <span class="network"><i></i>Celo Sepolia</span>
+        <span class="network"><i></i><span data-network-name>Celo Sepolia</span></span>
       </header>
       <main id="app">
         <section id="dapp-approval" class="screen approval-card" hidden>
@@ -17,10 +17,10 @@
           <h1 id="dapp-title">Connect website</h1>
           <p class="muted">Requested by <strong id="dapp-origin"></strong></p>
           <div id="dapp-transaction" hidden>
-            <div class="metric-row"><span>Network</span><strong>Celo Sepolia</strong></div>
+            <div class="metric-row"><span>Network</span><strong id="dapp-network">Celo Sepolia</strong></div>
             <div class="metric-row"><span>From</span><strong id="dapp-from" class="address"></strong></div>
             <div class="metric-row"><span>To</span><strong id="dapp-to" class="address"></strong></div>
-            <div class="metric-row"><span>CELO value</span><strong id="dapp-value"></strong></div>
+            <div class="metric-row"><span>Native value</span><strong id="dapp-value"></strong></div>
             <p id="dapp-call-warning" class="risk blocked" hidden>Contract call: verify the raw data and destination. Paranoia cannot identify every contract action.</p>
             <details><summary>Raw transaction data</summary><code id="dapp-data" class="raw-data"></code></details>
           </div>
@@ -32,7 +32,7 @@
         <section id="welcome" class="screen" hidden>
           <p class="eyebrow">Independent wallet</p>
           <h1>Your wallet should be paranoid.</h1>
-          <p class="muted">Create a new owner wallet here, then deploy a protected smart account on Celo Sepolia.</p>
+          <p class="muted">Create a new owner wallet here, then deploy a protected smart account on your chosen testnet.</p>
           <button id="start-create" class="button primary">Create new wallet</button>
           <button id="start-import" class="button secondary">Import recovery phrase</button>
         </section>
@@ -62,6 +62,18 @@
           <button id="unlock-button" class="button primary">Unlock wallet</button>
         </section>
         <section id="wallet" class="screen" hidden>
+          <div class="account-controls network-controls">
+            <label for="network-select">Testnet</label>
+            <select id="network-select" aria-label="Choose testnet"></select>
+            <button id="switch-network" class="button secondary">Switch testnet</button>
+            <p id="network-setup-status" class="fineprint"></p>
+            <details><summary>Factory configuration</summary>
+              <p class="fineprint">Only use a Paranoia factory you deployed or trust on this network. Checking that code exists is not a security audit.</p>
+              <label for="factory-address">Factory address</label>
+              <input id="factory-address" placeholder="0x…" autocomplete="off">
+              <button id="save-factory" class="button secondary">Save factory for this testnet</button>
+            </details>
+          </div>
           <details class="card account-controls">
             <summary id="active-account-name">Account 1 · Manage accounts</summary>
             <label for="account-select">Your accounts</label>
@@ -74,11 +86,12 @@
             <button id="add-account" class="button secondary">+ Add account</button>
             <p class="fineprint">Same recovery phrase. Each account has its own owner, smart account and website permissions. New smart accounts require deployment gas.</p>
           </details>
-          <div class="heading-row wallet-heading"><div><p class="eyebrow">Celo Sepolia</p><h1>My wallet</h1></div><button id="lock-button" class="icon-button" title="Lock wallet" aria-label="Lock wallet">⌁</button></div>
+          <div class="heading-row wallet-heading"><div><p class="eyebrow" data-network-name>Celo Sepolia</p><h1>My wallet</h1></div><button id="lock-button" class="icon-button" title="Lock wallet" aria-label="Lock wallet">⌁</button></div>
           <div id="deploy-card" class="card" hidden>
             <p class="eyebrow">Setup required</p>
             <h2>Deploy your smart account</h2>
-            <p class="muted">The owner address needs testnet CELO to pay deployment gas. Keep your protected funds in the smart account after deployment.</p>
+            <p class="muted">The owner address needs testnet <span data-native-symbol>CELO</span> on <span data-network-name>Celo Sepolia</span> to pay deployment gas. Keep your protected funds in the smart account after deployment.</p>
+            <p id="deployment-owner-balance" class="fineprint"></p>
             <p class="label">Owner address for deployment gas</p><p id="owner-deploy-address" class="address"></p>
             <button id="copy-owner" class="button secondary">Copy owner address</button>
             <button id="deploy-button" class="button primary">Deploy smart account</button>
@@ -88,7 +101,7 @@
             <section id="home-pane" class="pane">
               <div class="balance-card">
                 <p class="balance-caption">Total balance</p>
-                <div class="balance"><span id="smart-balance">0</span><small>CELO</small></div>
+                <div class="balance"><span id="smart-balance">0</span><small data-native-symbol>CELO</small></div>
                 <button id="copy-smart" class="mini-button">Copy address</button>
               </div>
               <div class="quick-actions" aria-label="Wallet actions">
@@ -97,15 +110,15 @@
                 <button class="quick-action" data-tab="security"><span class="quick-icon" aria-hidden="true">◇</span><span>Security</span></button>
               </div>
               <h2 class="section-title">Assets</h2>
-              <div class="asset-row"><span class="asset-icon" aria-hidden="true">C</span><span class="asset-name">Celo<small>Celo Sepolia</small></span><strong id="smart-balance-asset">0 CELO</strong></div>
+              <div class="asset-row"><span class="asset-icon" aria-hidden="true" id="native-icon">C</span><span class="asset-name"><span data-native-symbol>CELO</span><small data-network-name>Celo Sepolia</small></span><strong id="smart-balance-asset">0 CELO</strong></div>
               <div class="protection-row"><span class="protection-icon" aria-hidden="true">✓</span><span>Protected by Paranoia<small>Per-transfer limit: <strong id="current-limit">—</strong></small></span></div>
               <div class="metric-row owner-gas"><span>Owner gas balance</span><strong id="owner-balance">—</strong></div>
             </section>
             <nav class="tabs" aria-label="Wallet navigation"><button class="tab active" data-tab="home">Home</button><button class="tab" data-tab="send">Send</button><button class="tab" data-tab="receive">Receive</button><button class="tab" data-tab="security">Security</button></nav>
             <section id="send-pane" class="pane" hidden>
-              <h2>Send CELO</h2>
+              <h2>Send <span data-native-symbol>CELO</span></h2>
               <label>Recipient<input id="recipient" placeholder="0x…" /></label>
-              <label>Amount in CELO<input id="send-amount" inputmode="decimal" placeholder="0.00" /></label>
+              <label>Amount in <span data-native-symbol>CELO</span><input id="send-amount" inputmode="decimal" placeholder="0.00" /></label>
               <p id="send-risk" class="risk neutral">Enter an amount to check the spending policy.</p>
               <button id="review-send" class="button primary">Review transfer</button>
               <div id="send-review" class="review" hidden><p id="send-summary"></p><button id="confirm-send" class="button primary">Sign and submit</button><button id="cancel-send" class="button secondary">Edit transfer</button></div>
@@ -119,7 +132,7 @@
             </section>
             <section id="security-pane" class="pane" hidden>
               <h2>Security rules</h2>
-              <label>CELO limit per transfer<input id="new-limit" inputmode="decimal" placeholder="1.0" /></label>
+              <label><span data-native-symbol>CELO</span> limit per transfer<input id="new-limit" inputmode="decimal" placeholder="1.0" /></label>
               <button id="update-limit" class="button secondary">Update on-chain limit</button>
               <div class="divider"></div>
               <h2>Recovery phrase</h2>
@@ -136,12 +149,12 @@
               <label>Delegate address<input id="delegate-address" placeholder="0x…" /></label>
               <div class="button-row"><button id="add-delegate" class="button secondary">Allow</button><button id="remove-delegate" class="button secondary">Remove</button></div>
             </section>
-            <section id="receive-pane" class="pane" hidden><h2>Receive CELO</h2><p class="muted">Send Celo Sepolia CELO to this protected smart account.</p><p id="receive-address" class="address large"></p><button id="copy-receive" class="button primary">Copy address</button></section>
+            <section id="receive-pane" class="pane" hidden><h2>Receive <span data-native-symbol>CELO</span></h2><p class="muted">Send <span data-native-symbol>CELO</span> on <span data-network-name>Celo Sepolia</span> only to this protected smart account. Switching networks does not bridge funds.</p><p id="receive-address" class="address large"></p><button id="copy-receive" class="button primary">Copy address</button></section>
           </div>
         </section>
       </main>
       <div id="toast" role="status" aria-live="polite" hidden></div>
-      <footer>Celo Sepolia testnet · Paranoia MVP</footer>
+      <footer><span data-network-name>Celo Sepolia</span> · Testnet only · Paranoia MVP</footer>
     </div>
     <script type="module" src="/src/popup.ts"></script>
   </body>

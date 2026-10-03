@@ -1,7 +1,12 @@
 type BackgroundReply = { ok: true; value: unknown } | { ok: false; error: string; code?: number };
 
 chrome.runtime.onMessage.addListener((message, sender) => {
-  if (sender.id !== chrome.runtime.id || message.type !== "REFRESH_ACCOUNTS") return;
+  if (sender.id !== chrome.runtime.id) return;
+  if (message.type === "CHAIN_CHANGED") {
+    window.postMessage({ source: "paranoia-bridge", event: "chainChanged", chainId: message.chainId }, location.origin);
+    return;
+  }
+  if (message.type !== "REFRESH_ACCOUNTS") return;
   void extensionMessage({ type: "DAPP_REQUEST", method: "eth_accounts" }).then((reply) => {
     if (reply.ok) window.postMessage({ source: "paranoia-bridge", event: "accountsChanged", accounts: reply.value }, location.origin);
   });

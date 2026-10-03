@@ -3,7 +3,7 @@
   "name": "Paranoia Wallet",
   "version": "0.1.0",
   "minimum_chrome_version": "120",
-  "description": "Independent Celo Sepolia smart wallet with on-chain transaction policies.",
+  "description": "Independent smart wallet for Celo Sepolia, Ethereum Sepolia, BNB Testnet and Polygon Amoy with on-chain policies.",
   "action": {
     "default_title": "Paranoia Wallet",
     "default_popup": "popup.html"
@@ -19,7 +19,10 @@
   "permissions": ["storage"],
   "host_permissions": [
     "https://forno.celo-sepolia.celo-testnet.org/*",
-    "https://public.pimlico.io/*"
+    "https://public.pimlico.io/*",
+    "https://ethereum-sepolia-rpc.publicnode.com/*",
+    "https://bsc-testnet-dataseed.bnbchain.org/*",
+    "https://polygon-amoy-bor-rpc.publicnode.com/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"

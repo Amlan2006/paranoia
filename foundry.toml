@@ -5,5 +5,8 @@ libs = ["lib"]
 
 [rpc_endpoints]
 celo_sepolia = "${CELO_SEPOLIA_RPC_URL}"
+eth_sepolia = "${ETH_SEPOLIA_RPC_URL}"
+bnb_testnet = "${BNB_TESTNET_RPC_URL}"
+polygon_amoy = "${POLYGON_AMOY_RPC_URL}"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
